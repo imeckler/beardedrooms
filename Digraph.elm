@@ -40,10 +40,11 @@ addVertex v g =
   in
   (vId, { freshID = vId + 1, graph = gr' })
 
-{- this error thing doesn't work, but can't find
-good documentation on error handling. can't let it slide
-or you get e.g. edges pointing to nonexistent vertices. -}
-
+{- edge data e means stuff like, "the target was actually
+created by pushing down from the source", "the source was
+the most recent pushdown to target", "the author of this document
+designated the target as the primary result for pushing down
+from the source", and so on -}
 addEdge : NodeID -> NodeID -> e -> Digraph v e -> Digraph v e
 addEdge from to e g =
   if Dict.member from g.graph && Dict.member to g.graph
@@ -60,3 +61,5 @@ addSuccessor suc e vd = { vd | outgoing <- Dict.update suc (\_ -> Just e) vd.out
 
 addPredecessor : NodeID -> e -> VertexData v e -> VertexData v e
 addPredecessor pred e vd = { vd | incoming <- Dict.update pred (\_ -> Just e) vd.incoming }
+
+
