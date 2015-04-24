@@ -1,10 +1,11 @@
 module Digraph
-    ( Digraph, empty, addVertex, addEdge
-    {- TODO: addNode, listNodes, addEdge, getEdges, etc. -}
-    ) where
+  ( Digraph, empty, addVertex, addEdge
+  {- TODO: addNode, listNodes, addEdge, getEdges, etc. -}
+  ) where
 
-import Dict as D
-import Set as S
+import Dict exposing (Dict)
+import Set exposing (Set)
+import Debug
 
 {- a Digraph is a dictionary of indexed vertices.
     the leading index records the maximum index, 
@@ -14,49 +15,48 @@ import Set as S
     of values stored in each vertex, and e
     is the type of edge labels. 
 -}
-type Digraph v comparable
-    = Digraph Index (D.Dict Index (Vertex v comparable))
+type alias Digraph v e =
+  { freshID : NodeID
+  , graph   : Dict NodeID (VertexData v e)
+  }
 
-type alias Index = Int
+type alias NodeID = Int
 
---a vertex has a value, a set of labeled incoming 
---edges, and a set of outgoing edges
-type Vertex v comparable
-    = Vertex v (EdgeList comparable) (EdgeList comparable)
+-- a vertex has a value, a set of labeled incoming 
+-- edges, and a set of outgoing edges
+type alias VertexData v e = 
+  { incoming : Dict NodeID e
+  , outgoing : Dict NodeID e
+  , value    : v
+  }
 
---index points to/from the vertex, comparable labels that edge
-type alias EdgeList comparable
-    = S.Set (comparable, Index) 
+empty : Digraph v e
+empty = { freshID = 0, graph = Dict.empty }
 
-empty : Digraph v comparable
-empty = Digraph 0 D.empty
-
-addVertex : v -> Digraph v comparable ->  Digraph v comparable
-addVertex v (Digraph m d) 
-    = let d' = D.insert m (Vertex v S.empty S.empty) d 
-      in
-        Digraph (m+1) d' 
+addVertex : v -> Digraph v e -> (NodeID, Digraph v e)
+addVertex v g =
+  let vId = g.freshID
+      gr' = Dict.insert vId { incoming = Dict.empty, outgoing = Dict.empty, value = v } g.graph
+  in
+  (vId, { freshID = vId + 1, graph = gr' })
 
 {- this error thing doesn't work, but can't find
 good documentation on error handling. can't let it slide
 or you get e.g. edges pointing to nonexistent vertices. -}
-addEdge : comparable -> (Index,Index) -> Digraph v comparable ->  Digraph v comparable
-addEdge comparable (s,t) (Digraph m d) 
-    = if D.member s d && D.member t d
-         then let d' = D.update s (addOutEdge comparable t) d
-                  d'' = D.update t (addInEdge comparable s) d'
-              in   
-                 Digraph m d''
-         else Native.Debug.crash "can't add edge to/from nowhere"
 
-addOutEdge : comparable -> Index -> Maybe (Vertex v comparable) -> Maybe (Vertex v comparable)
-addOutEdge comparable t mv
-    = case mv of 
-        Nothing -> Nothing
-        (Just (Vertex v ins outs)) -> Just (Vertex v ins (S.insert (comparable, t) outs))
+addEdge : NodeID -> NodeID -> e -> Digraph v e -> Digraph v e
+addEdge from to e g =
+  if Dict.member from g.graph && Dict.member to g.graph
+  then
+    let gr' =
+          Dict.update from (Maybe.map (addSuccessor to e)) g.graph
+          |> Dict.update to (Maybe.map (addPredecessor from e))
+    in
+    { g | graph <- gr' }
+  else Debug.crash "Digraph.addEdge: Nodes not in graph"
 
-addInEdge : comparable -> Index -> Maybe (Vertex v comparable) -> Maybe (Vertex v comparable)
-addInEdge comparable s mv
-    = case mv of  
-        Nothing -> Nothing
-        (Just (Vertex v ins outs)) -> Just (Vertex v (S.insert (comparable, s) ins) outs)
+addSuccessor : NodeID -> e -> VertexData v e -> VertexData v e
+addSuccessor suc e vd = { vd | outgoing <- Dict.update suc (\_ -> Just e) vd.outgoing }
+
+addPredecessor : NodeID -> e -> VertexData v e -> VertexData v e
+addPredecessor pred e vd = { vd | incoming <- Dict.update pred (\_ -> Just e) vd.incoming }
