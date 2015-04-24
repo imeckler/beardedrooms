@@ -37,6 +37,9 @@ addVertex v (Digraph m d)
       in
         Digraph (m+1) d' 
 
+{- this error thing doesn't work, but can't find
+good documentation on error handling. can't let it slide
+or you get e.g. edges pointing to nonexistent vertices. -}
 addEdge : comparable -> (Index,Index) -> Digraph v comparable ->  Digraph v comparable
 addEdge comparable (s,t) (Digraph m d) 
     = if D.member s d && D.member t d
