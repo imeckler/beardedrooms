@@ -1,5 +1,5 @@
 module Digraph
-    ( Digraph, empty
+    ( Digraph, empty, addVertex, addEdge
     {- TODO: addNode, listNodes, addEdge, getEdges, etc. -}
     ) where
 
@@ -24,16 +24,36 @@ type alias Index = Int
 type Vertex v comparable
     = Vertex v (EdgeList comparable) (EdgeList comparable)
 
+--index points to/from the vertex, comparable labels that edge
 type alias EdgeList comparable
-    = S.Set (Index, comparable) 
+    = S.Set (comparable, Index) 
 
 empty : Digraph v comparable
 empty = Digraph 0 D.empty
 
-{--}
 addVertex : v -> Digraph v comparable ->  Digraph v comparable
 addVertex v (Digraph m d) 
-    = let d' = D.insert (m+1) (Vertex v S.empty S.empty) d 
+    = let d' = D.insert m (Vertex v S.empty S.empty) d 
       in
         Digraph (m+1) d' 
---}
+
+addEdge : comparable -> (Index,Index) -> Digraph v comparable ->  Digraph v comparable
+addEdge comparable (s,t) (Digraph m d) 
+    = if D.member s d && D.member t d
+         then let d' = D.update s (addOutEdge comparable t) d
+                  d'' = D.update t (addInEdge comparable s) d'
+              in   
+                 Digraph m d''
+         else Native.Debug.crash "can't add edge to/from nowhere"
+
+addOutEdge : comparable -> Index -> Maybe (Vertex v comparable) -> Maybe (Vertex v comparable)
+addOutEdge comparable t mv
+    = case mv of 
+        Nothing -> Nothing
+        (Just (Vertex v ins outs)) -> Just (Vertex v ins (S.insert (comparable, t) outs))
+
+addInEdge : comparable -> Index -> Maybe (Vertex v comparable) -> Maybe (Vertex v comparable)
+addInEdge comparable s mv
+    = case mv of  
+        Nothing -> Nothing
+        (Just (Vertex v ins outs)) -> Just (Vertex v (S.insert (comparable, s) ins) outs)
