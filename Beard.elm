@@ -2,19 +2,44 @@ module Beard
   ( Beard 
   ) where
 
-type alias Beard du =
-  List (DisplayTree du)
+{- for now, assume the display tree
+is the same as tree that represents the semantics
+of which objects descend from which for purposes
+of moving whole subtrees around, folding whole subtrees
+away, etc. But these might be separated if the user
+wants to move a box around on the screen without
+changing its parent and children. -}
+import Object exposing (Object)
 
-{- not sure if the children should be in
-a record like this; will be nicer than
-having a 6-ary constructor, but maybe it is unsafe because
-extending the record would break the show beard function? -}
-type DisplayTree du =
-  Empty
-  | Node du { upNodes : List DisplayTree du
-            , downNodes : List DisplayTree du
-            , overNodes : List DisplayTree du
-            --maybe left and right nodes
-            }   
+type alias Beard =
+  { freshID : NodeID
+  , forest : Forest
+  , currentFocus : NodeID --or Location?
+  }
 
+type alias Forest = List DisplayTree
 
+--empty node carries something telling
+--where a node used to be, maybe
+type DisplayTree =
+  Empty NodeID --or something
+  | Node { data : NodeData
+         , children : Children
+         }
+
+type alias Children =
+  { upNodes : Forest
+  , downNodes : Forest
+  , overNodes : Forest
+  --maybe left and right nodes
+  }   
+ 
+type alias NodeData =
+  { value : Object.ObjectInContext
+  , id : NodeID
+  , location : Location
+  }
+
+type alias NodeID = Int
+
+type alias Location = List NodeID

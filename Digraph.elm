@@ -19,7 +19,7 @@ type alias Digraph v e =
   { freshID : NodeID
   , graph   : Dict NodeID (VertexData v e)
   }
-
+ 
 type alias NodeID = Int
 
 -- a vertex has a value, a set of labeled incoming 
