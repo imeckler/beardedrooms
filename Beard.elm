@@ -10,6 +10,8 @@ away, etc. But these might be separated if the user
 wants to move a box around on the screen without
 changing its parent and children. -}
 import Object exposing (Object)
+import LinearOrder exposing (LinearOrder)
+import Dict exposing (Dict)
 
 type alias Beard =
   { freshID : NodeID
@@ -17,7 +19,10 @@ type alias Beard =
   , currentFocus : NodeID --or Location?
   }
 
-type alias Forest = List DisplayTree
+type alias Forest = 
+  { trees : Dict.Dict NodeID DisplayTree
+  , order : LinearOrder.LinearOrder NodeID
+  }
 
 --empty node carries something telling
 --where a node used to be, maybe
