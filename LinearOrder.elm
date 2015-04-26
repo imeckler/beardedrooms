@@ -1,7 +1,9 @@
 module LinearOrder 
   ( LinearOrder
   , empty
-  , insertTop, insertBottom, moveUp, moveDown
+  , insertTop, insertBottom, insertAbove, insertBelow
+  , moveUp, moveDown
+  , atTop, atBottom, member
   ) where
 
 import Dict exposing (Dict)
@@ -12,16 +14,29 @@ type alias LinearOrder v = List v
 empty : LinearOrder v
 empty = []
 
-insertTop : v -> List v -> List v
+--allows repeated elements
+insertTop : v -> LinearOrder v -> LinearOrder v
 insertTop v vs = v::vs
 
-insertBottom : v -> List v -> List v
+insertBottom : v -> LinearOrder v -> LinearOrder v
 insertBottom v vs = vs ++ [v]
+
+insertAbove : v -> v -> LinearOrder v -> LinearOrder v
+insertAbove new place vs =
+  case vs of
+    [] -> []
+    h::t -> if h == place
+               then new::h::t
+               else h::(insertAbove new place t)
+
+insertBelow : v -> v -> LinearOrder v -> LinearOrder v
+insertBelow new place vs =
+  List.reverse vs |> insertAbove new place |> List.reverse
 
 {-allows dumb things like moving something
 not in the list, moving something already 
 at the top -}
-moveUp : v -> List v -> List v
+moveUp : v -> LinearOrder v -> LinearOrder v
 moveUp v vs =
   case vs of
     [] -> []
@@ -30,10 +45,25 @@ moveUp v vs =
       if | h1 == v -> vs
          | h2 == v -> h2::h1::t
          | otherwise -> h1:: moveUp v (h2::t) 
+
 --backwards behavior if there are duplicate v
-moveDown : v -> List v -> List v
+moveDown : v -> LinearOrder v -> LinearOrder v
 moveDown v vs =
-  List.reverse <| moveUp v <| List.reverse vs
+  List.reverse vs |> moveUp v |> List.reverse
+
+atTop : v -> LinearOrder v -> Bool
+atTop v vs =
+  case vs of 
+    [] -> False
+    h::_ -> h == v
+
+atBottom : v -> LinearOrder v -> Bool
+atBottom v vs =
+  List.reverse vs |> atTop v
+
+member : v -> LinearOrder v -> Bool
+member = List.member
+
 
 --too complicated for now
 {--
