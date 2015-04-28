@@ -20,20 +20,18 @@ avoids duplicating code and it provides a
 neat solution to rooms with multiple roots:
 that room corresponds to a single db object
 that displays invisibly and has as children
-the would-be roots.-}
+the would-be roots. still have special functions
+so that you don't generally add root nodes to beards.-}
 type alias Beard =
   { freshID : NodeID
   , tree : DisplayTree
 --  , currentFocus : NodeID --or Location?
   }
 
---empty node carries something telling
---where a node used to be, maybe
 type DisplayTree =
-  Empty NodeID --or something. for leaving markers.
-  | Node { data : NodeData
-         , children : Children
-         }
+  { nodeData : NodeData
+  , children : Children
+  }
 
 type alias NodeData =
   { value : Object.ObjectInContext
@@ -45,30 +43,66 @@ type alias Children =
   { upNodes : Forest
   , downNodes : Forest
   , overNodes : Forest
-  --maybe left and right nodes
+  --maybe left, right and under nodes
   }   
  
 type alias Forest = 
-  { trees : Dict.Dict NodeID DisplayTree
-  , order : LinearOrder.LinearOrder NodeID
-  }
+  Forest
+    { trees : Dict.Dict NodeID DisplayTree
+    , order : LinearOrder.LinearOrder NodeID
+    }
 
 type alias NodeID = Int
 
-type alias Location = List NodeID
+--location [(3,Up),(6,Down)] means i'm the 
+--6th DownNode of the 3rd UpNode of the root
+type alias Location = List (NodeID,NodeKind)
 
-empty : Beard
-empty = { freshID = 0, 
-        , forest = emptyTree }
+singleton : Object.ObjectInContex -> Beard
+singleton obj =
+  let nodeData =
+        { value = obj, id = 0 , location = [] } 
+  in
+  { freshID = 1,
+  , tree = Node nodeData emptyChildren
+  } 
 
-emptyTree : DisplayTree
-emptyTree = 
-          
-{ trees = Dict.empty
-                   , order = LinearOrder.empty } }  
+type NodeKind = UpNode | DownNode | OverNode --more
 
-insert : Object.ObjectInContext -> Location -> Beard -> Beard
-insert obj loc beard =
+emptyChildren : Children
+emptyChildren = 
+  { upNodes = emptyForest
+  , downNodes = emptyForest
+  , overNodes = emptyForest
+  }
+
+emptyForest : Forest
+emptyForest =
+  Forest
+    { trees = Dict.empty
+    , order = LinearOrder.empty
+    }  
+
+{- this is not great because the type Children
+and the type NodeKind are not coupled at all.
+what is the right way to do this without writing a
+new insert function for each kind of descendant 
+we may want to add?-}
+treeInsert : Object.ObjectInContext -> Location -> DisplayTree -> DisplayTree
+treeInsert obj loc tree =
+  case loc of
+    [] -> Debug.crash "Beard.treeInsert: can't insert at root" 
+    (id,kind)::loc' ->
+      let new = forestInsert obj id t  
+          children = tree.children
+      in
+      case kind of
+        UpNode -> { tree | upNodes <- new children.upNodes }
+        DownNode -> { tree | downNodes <- new children.downNodes }
+        OverNode -> { tree | overNodes <- new children.overNodes }
+
+insert' : Object.ObjectInContext -> Location -> Beard -> Beard
+insert' obj loc beard =
   case loc of
     [] -> let id = beard.freshID
 
