@@ -24,11 +24,11 @@ the would-be roots. still have special functions
 so that you don't generally add root nodes to beards.-}
 type alias Beard =
   { freshID : NodeID
-  , tree : DisplayTree
+  , treeBeard : DisplayTree --leave this, or the Ulairi will get you
 --  , currentFocus : NodeID --or Location?
   }
 
-type DisplayTree =
+type alias DisplayTree =
   { nodeData : NodeData
   , children : Children
   }
@@ -40,13 +40,23 @@ type alias NodeData =
 
 getID : NodeData -> NodeID
 getID nodeData =
-  nodeData.location |> List.reverse |> List.head |> fst
+  case nodeData.location |> List.reverse |> List.head of
+    Nothing -> Debug.crash "Beard.getID: node has no location"
+    Just (id,_) -> id
 
 getNodeKind : NodeData -> NodeKind
 getNodeKind nodeData =
-  nodeData.location |> List.reverse |> List.head |> snd
+  case nodeData.location |> List.reverse |> List.head of
+    Nothing -> Debug.crash "Beard.getNodeKind: node has no location"
+    Just (_,kind) -> kind
 
 type NodeKind = UpNode | DownNode | OverNode --more
+
+type alias NodeID = Int
+
+--location [(3,Up),(6,Down)] means i'm the 
+--6th DownNode of the 3rd UpNode of the root
+type alias Location = List (NodeID,NodeKind)
 
 type alias Children =
   { upNodes : Forest
@@ -55,25 +65,21 @@ type alias Children =
   --maybe left, right and under nodes
   }   
  
-type alias Forest = 
+type Forest = 
   Forest
     { trees : Dict.Dict NodeID DisplayTree
-    , order : LinearOrder.LinearOrder NodeID
+    , order : Order
     }
 
-type alias NodeID = Int
+type alias Order = LinearOrder.LinearOrder NodeID
 
---location [(3,Up),(6,Down)] means i'm the 
---6th DownNode of the 3rd UpNode of the root
-type alias Location = List (NodeID,NodeKind)
-
-singleton : Object.ObjectInContex -> Beard
+singleton : Object.ObjectInContext -> Beard
 singleton obj =
   let nodeData =
         { value = obj, location = [] } 
   in
-  { freshID = 1,
-  , tree = singletonTree nodeData 
+  { freshID = 1
+  , treeBeard = singletonTree nodeData 
   } 
 
 singletonTree : NodeData -> DisplayTree
@@ -108,11 +114,16 @@ treeInsert nodeData loc tree =
     (id,kind)::loc' ->
       let new = forestInsertRec nodeData id loc'  
           children = tree.children
-      in
-      case kind of
-        UpNode -> { tree | upNodes <- new children.upNodes }
-        DownNode -> { tree | downNodes <- new children.downNodes }
-        OverNode -> { tree | overNodes <- new children.overNode }
+          newchildren =
+           case kind of
+            UpNode   -> { children
+                        | upNodes <- new children.upNodes }
+            DownNode -> { children
+                        | downNodes <- new children.downNodes }
+            OverNode -> { children
+                        | overNodes <- new children.overNodes }
+      in 
+      { tree | children <- newchildren }
 
 forestInsertRec : NodeData -> NodeID 
                   -> Location -> Forest -> Forest 
@@ -139,10 +150,9 @@ forestInsertNew nodeData id forest =
         newTrees = Dict.insert id newTree forest.trees
         newOrder = orderInsert nodeData id forest.order
     in
-    { tree = newTrees, order = newOrder }
+    { trees = newTrees, order = newOrder }
 
-orderInsert : NodeData -> NodeID  -> LinearOrder.LinearOrder
-              -> LinearOrder.LinearOrder 
+orderInsert : NodeData -> NodeID  -> Order -> Order 
 orderInsert nodeData id order =  
   case getNodeKind nodeData of
     DownNode -> LinearOrder.insertTop id order
@@ -150,7 +160,7 @@ orderInsert nodeData id order =
     OverNode -> LinearOrder.insertBottom id order
 
 
-
+{-
 insert' : Object.ObjectInContext -> Location
           -> Beard -> Beard
 insert' obj loc beard =
@@ -158,7 +168,5 @@ insert' obj loc beard =
     [] -> let id = beard.freshID
 
           in { }
-
-
-Debug.crash "Beard.insert: Location does not exist"
+-}
 
