@@ -1,5 +1,5 @@
 module Beard 
-  ( Beard 
+  ( ..
   ) where
 
 {- for now, assume the display tree
@@ -37,25 +37,26 @@ type alias NodeData =
   { value : Object.ObjectInContext
   , location : Location
   }
-
-getID : NodeData -> NodeID
-getID nodeData =
+ 
+idFromData : NodeData -> NodeID
+idFromData nodeData =
   case nodeData.location |> List.reverse |> List.head of
-    Nothing -> Debug.crash "Beard.getID: node has no location"
+    Nothing -> Debug.crash "Beard.idFromData: node has no location"
     Just (id,_) -> id
 
-getNodeKind : NodeData -> NodeKind
-getNodeKind nodeData =
+kindFromData : NodeData -> NodeKind
+kindFromData nodeData =
   case nodeData.location |> List.reverse |> List.head of
-    Nothing -> Debug.crash "Beard.getNodeKind: node has no location"
+    Nothing -> Debug.crash "Beard.kindFromData: node has no location"
     Just (_,kind) -> kind
 
 type NodeKind = UpNode | DownNode | OverNode --more
 
 type alias NodeID = Int
 
---location [(3,Up),(6,Down)] means i'm the 
---6th DownNode of the 3rd UpNode of the root
+{- location [(3,Up),(6,Down)] means i'm the 
+DownNode labelled 6 of the UpNode labelled 3 
+of the root -}
 type alias Location = List (NodeID,NodeKind)
 
 type alias Children =
@@ -116,20 +117,23 @@ treeInsert nodeData loc tree =
           children = tree.children
           newchildren =
            case kind of
-            UpNode   -> { children
-                        | upNodes <- new children.upNodes }
-            DownNode -> { children
-                        | downNodes <- new children.downNodes }
-            OverNode -> { children
-                        | overNodes <- new children.overNodes }
+            UpNode ->
+              { children
+              | upNodes <- new children.upNodes }
+            DownNode ->
+              { children
+              | downNodes <- new children.downNodes }
+            OverNode ->
+              { children
+              | overNodes <- new children.overNodes }
       in 
       { tree | children <- newchildren }
 
 forestInsertRec : NodeData -> NodeID 
                   -> Location -> Forest -> Forest 
-forestInsertRec nodeData id loc forest =
+forestInsertRec nodeData id loc (Forest forest) =
   case loc of 
-    [] -> forestInsertNew nodeData id forest
+    [] -> forestInsertNew nodeData id (Forest forest)
     _ -> 
       case Dict.get id forest.trees of
         Nothing ->
@@ -137,12 +141,12 @@ forestInsertRec nodeData id loc forest =
         Just tree -> 
           let newTree = treeInsert nodeData loc tree
               newTrees = 
-                Dict.update id (always newTree) forest.trees
+                Dict.update id (\_ -> Just newTree) forest.trees
           in
-          { forest | trees <- newTrees }
+          Forest { forest | trees <- newTrees }
    
 forestInsertNew : NodeData -> NodeID -> Forest -> Forest
-forestInsertNew nodeData id forest =
+forestInsertNew nodeData id (Forest forest) =
   if Dict.member id forest.trees 
   then Debug.crash "Bearh.forestInsertNew: id already exists"
   else 
@@ -150,15 +154,14 @@ forestInsertNew nodeData id forest =
         newTrees = Dict.insert id newTree forest.trees
         newOrder = orderInsert nodeData id forest.order
     in
-    { trees = newTrees, order = newOrder }
+    Forest { trees = newTrees, order = newOrder }
 
 orderInsert : NodeData -> NodeID  -> Order -> Order 
 orderInsert nodeData id order =  
-  case getNodeKind nodeData of
+  case kindFromData nodeData of
     DownNode -> LinearOrder.insertTop id order
     UpNode -> LinearOrder.insertBottom id order
     OverNode -> LinearOrder.insertBottom id order
-
 
 {-
 insert' : Object.ObjectInContext -> Location
