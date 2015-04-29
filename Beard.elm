@@ -35,9 +35,14 @@ type DisplayTree =
 
 type alias NodeData =
   { value : Object.ObjectInContext
-  , id : NodeID
   , location : Location
   }
+
+getID : NodeData -> NodeID
+getID nodeData =
+  nodeData.location |> List.reverse |> List.head |> fst
+
+type NodeKind = UpNode | DownNode | OverNode --more
 
 type alias Children =
   { upNodes : Forest
@@ -61,13 +66,16 @@ type alias Location = List (NodeID,NodeKind)
 singleton : Object.ObjectInContex -> Beard
 singleton obj =
   let nodeData =
-        { value = obj, id = 0 , location = [] } 
+        { value = obj, location = [] } 
   in
   { freshID = 1,
-  , tree = Node nodeData emptyChildren
+  , tree = singletonTree nodeData 
   } 
 
-type NodeKind = UpNode | DownNode | OverNode --more
+singletonTree : NodeData -> DisplayTree
+singletonTree data =
+ { nodeData = data
+ , children = emptyChildren }
 
 emptyChildren : Children
 emptyChildren = 
@@ -88,20 +96,48 @@ and the type NodeKind are not coupled at all.
 what is the right way to do this without writing a
 new insert function for each kind of descendant 
 we may want to add?-}
-treeInsert : Object.ObjectInContext -> Location -> DisplayTree -> DisplayTree
-treeInsert obj loc tree =
+treeInsert : NodeData -> Location
+             -> DisplayTree -> DisplayTree
+treeInsert nodeData loc tree =
   case loc of
     [] -> Debug.crash "Beard.treeInsert: can't insert at root" 
     (id,kind)::loc' ->
-      let new = forestInsert obj id t  
+      let new = forestInsertRec nodeData id loc'  
           children = tree.children
       in
       case kind of
         UpNode -> { tree | upNodes <- new children.upNodes }
         DownNode -> { tree | downNodes <- new children.downNodes }
-        OverNode -> { tree | overNodes <- new children.overNodes }
+        OverNode -> { tree | overNodes <- new children.overNode }
 
-insert' : Object.ObjectInContext -> Location -> Beard -> Beard
+forestInsertRec : NodeData -> NodeID 
+                  -> Location -> Forest -> Forest 
+forestInsertRec nodeData id loc forest =
+  case loc of 
+    [] -> forestInsertNew nodeData id forest
+    _ -> 
+      case Dict.get id forest.trees of
+        Nothing ->
+         Debug.crash "Beard.forestInsertRec: no such location"
+        Just tree -> 
+          let newTree = treeInsert nodeData loc tree
+              newTrees = 
+                Dict.update id (always newTree) forest.trees
+          in
+          { forest | trees <- newTrees }
+   
+forestInsertNew nodeData id forest =
+  if Dict.member id forest.trees 
+  then Debug.crash "Bearh.forestInsertNew: id already exists"
+  else 
+    let newTree = { nodeData = nodeData
+                  , children = emptyChildren }
+        Dict.insert id newTree forest.trees
+
+
+
+insert' : Object.ObjectInContext -> Location
+          -> Beard -> Beard
 insert' obj loc beard =
   case loc of
     [] -> let id = beard.freshID
