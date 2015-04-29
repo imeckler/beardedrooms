@@ -42,6 +42,10 @@ getID : NodeData -> NodeID
 getID nodeData =
   nodeData.location |> List.reverse |> List.head |> fst
 
+getNodeKind : NodeData -> NodeKind
+getNodeKind nodeData =
+  nodeData.location |> List.reverse |> List.head |> snd
+
 type NodeKind = UpNode | DownNode | OverNode --more
 
 type alias Children =
@@ -126,13 +130,24 @@ forestInsertRec nodeData id loc forest =
           in
           { forest | trees <- newTrees }
    
+forestInsertNew : NodeData -> NodeID -> Forest -> Forest
 forestInsertNew nodeData id forest =
   if Dict.member id forest.trees 
   then Debug.crash "Bearh.forestInsertNew: id already exists"
   else 
-    let newTree = { nodeData = nodeData
-                  , children = emptyChildren }
-        Dict.insert id newTree forest.trees
+    let newTree = singletonTree nodeData
+        newTrees = Dict.insert id newTree forest.trees
+        newOrder = orderInsert nodeData id forest.order
+    in
+    { tree = newTrees, order = newOrder }
+
+orderInsert : NodeData -> NodeID  -> LinearOrder.LinearOrder
+              -> LinearOrder.LinearOrder 
+orderInsert nodeData id order =  
+  case getNodeKind nodeData of
+    DownNode -> LinearOrder.insertTop id order
+    UpNode -> LinearOrder.insertBottom id order
+    OverNode -> LinearOrder.insertBottom id order
 
 
 
