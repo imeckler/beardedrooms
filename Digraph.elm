@@ -1,6 +1,6 @@
 module Digraph
   ( Digraph, empty, addVertex, addEdge
-  {- TODO: addNode, listNodes, addEdge, getEdges, etc. -}
+  , dataOfNode, valueOfNode, successorsOfNode, predecessorsOfNode
   ) where
 
 import Dict exposing (Dict)
@@ -22,8 +22,6 @@ type alias Digraph v e =
  
 type alias NodeID = Int
 
--- a vertex has a value, a set of labeled incoming 
--- edges, and a set of outgoing edges
 type alias VertexData v e = 
   { incoming : Dict NodeID e
   , outgoing : Dict NodeID e
@@ -62,4 +60,15 @@ addSuccessor suc e vd = { vd | outgoing <- Dict.update suc (\_ -> Just e) vd.out
 addPredecessor : NodeID -> e -> VertexData v e -> VertexData v e
 addPredecessor pred e vd = { vd | incoming <- Dict.update pred (\_ -> Just e) vd.incoming }
 
+dataOfNode : NodeID -> Digraph v e -> Maybe (VertexData v e)
+dataOfNode v g = M.get v g.graph
+
+valueOfNode : NodeID -> Digraph v e -> Maybe v
+valueOfNode v = Maybe.map .value << dataOfNode
+
+successorsOfNode : NodeID -> Digraph v e -> Maybe (Dict NodeID e)
+successorsOfNode v = Maybe.map .successors << dataOfNode
+
+predecessorsOfNode : NodeID -> Digraph v e -> Maybe (Dict NodeID e)
+predecessorsOfNode v = Maybe.map .predecessors << dataOfNode
 
