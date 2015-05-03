@@ -4,42 +4,47 @@ import Html exposing (..)
 import Html.Events exposing (onClick)
 import Debug
 import Json.Decode as Json exposing ((:=))
+import Html.Attributes
+import Dict exposing (Dict)
+import DB exposing (DBID)
+import Regex
+import Util exposing (..)
 
-type SingleDisplay
-  = Section
-    { heading  : String
+type PreHtml
+  = Node { tag : String, attributes : Dict String String, children : List PreHtml }
+  | Text String
+
+type Display
+  = Display
+    { preview  : PreHtml
+    , content  : PreHtml
     , children : List Display
-    , open     : Bool
+    , folded   : Bool
     }
-  | Html Html
 
 -- For now, we represent HTML as Json in the following way.
 -- { "tag" : String, "attributes": {String: String}, "children" : Array HTML }
-htmlOfJson : Json.Decoder Html
-htmlOfJson =
-  Json.object3 (\tag attrs cs -> Html.node tag attrs cs)
-    ("tag" := Json.string)
-    ("attributes" := Json.keyValuePairs Json.string)
-    ("children" := 
 
+preHtmlOfJson : Json.Decoder PreHtml
+preHtmlOfJson =
+  Json.oneOf
+  [ Json.map Text Json.string
+  , Json.object3 (\tag attrs cs -> Node { tag=tag, attributes=attrs, children=cs })
+      ("tag"        := Json.string)
+      ("attributes" := Json.dict Json.string)
+      ("children"   := Json.list (recJson (\() -> preHtmlOfJson)))
+  ]
+
+-- hack to get around elm's inability to handle rec. values
 recJson thunk = Json.customDecoder Json.value (\v -> Json.decodeValue (thunk ()) v)
 
 ofJson : Json.Decoder Display
 ofJson =
-  -- TODO: Check if the dummy arg is necessary. I suspect it is
-  let singleOfJson =
-        Json.oneOf
-        [ htmlOfJson
-        , Json.object2 (\h c -> Section {heading=h,children=c,open=False})
-            ("heading"  := Json.string)
-            ("children" := Json.list (recJson (\_ -> singleOfJson)))
-        -- hack to get around elm's inability to handle rec. values
-        , recJson (\_ -> singleOfJson)
-        ]
-  in
-  Json.list singleOfJson
-
-type alias Display = List SingleDisplay
+  Json.object4 (\p c cs f -> Display { preview = p, content = c, children = cs, folded = f })
+    ("preview"  := preHtmlOfJson)
+    ("content"  := preHtmlOfJson)
+    ("children" := Json.list (recJson (\() -> ofJson)))
+    ("folded"   := Json.bool)
 
 type alias Path = List Int
 
@@ -55,34 +60,59 @@ slideTo =
   go []
   
 toggleAt : Path -> Display -> Display
-toggleAt p d = case (p, d) of
-  (_, Html)          -> Debug.crash "Display.toggleAt: Invalid path. Ends at Html."
-  ([], Section r)    -> Section {r | open <- not r.open }
-  (i::p', Section r) -> case slideTo i r.children of
-    Nothing             -> Debug.crash "Display.toggleAt: Invalid path. Not enough children."
-    Just (pre, c, post) -> Section {r | children <- pre ++ (toggleAt p' c) :: post }
+toggleAt = modifyAt (\(Display d) -> Display {d | folded <- not d.folded})
+
+modifyAt : (Display -> Display) -> Path -> Display -> Display
+modifyAt f p (Display d) = case p of
+  []      -> f (Display d)
+  i :: p' -> case slideTo i d.children of
+    Nothing             -> Debug.crash "Display.modifyAt: Invalid path. Not enough children"
+    Just (pre, c, post) -> Display { d | children <- pre ++ modifyAt f p' c :: post }
 
 displayUpdateMailbox : Signal.Mailbox (Display -> Display)
 displayUpdateMailbox = Signal.mailbox identity
 
-displayUpdates : Signal (Display -> Display)
-displayUpdates = displayUpdateMailbox.signal
+dbLinkClicksBox : Signal.Mailbox (Maybe (DBID, Path))
+dbLinkClicksBox = Signal.mailbox Nothing
+
+dbLinkClicks = dbLinkClicksBox.signal
+
+toggles : Signal (Display -> Display)
+toggles = displayUpdateMailbox.signal
 
 toHtml : Display -> Html
 toHtml =
   let addr = displayUpdateMailbox.address
-      go p depth d = case d of
-        Section {heading, children, open} ->
-          div []
-          ( node ("h" ++ show depth)
-            [ onClick addr (toggleAt (List.reverse p)) ] -- TODO: Something to optimize if need be
-            [ Html.text heading ]
-          ::
-          if open
-          then [div [] (List.indexedMap (\i -> go (i::p) (depth + 1)) children)]
-          else [])
+      dictToAttrList = List.map (\(k,v) -> Html.Attributes.attribute k v) << Dict.toList
+      matchVelUrl =
+        let velUrlRegex = Regex.regex "vel://(.*)" in
+        \u -> case Regex.find (Regex.AtMost 1) velUrlRegex u of
+          m :: _ -> nth 1 m.submatches `Maybe.andThen` identity
+          []     -> Nothing
 
-        Html h -> h
+      preHtmlToHtml path =
+        let go pre = case pre of
+          Text s -> Html.text s
+          Node d ->
+            if | d.tag == "a" -> 
+                case Dict.get "href" d.attributes of
+                  Nothing  -> Html.node "a" (dictToAttrList d.attributes) (List.map go d.children)
+                  Just url -> 
+                    let onClickAttr =
+                          Maybe.map (\dbID -> onClick dbLinkClicksBox.address (Just (dbID, path)))
+                            (matchVelUrl url)
+                    in
+                    Html.node "a" (maybeCons onClickAttr <| dictToAttrList d.attributes)
+                      (List.map go d.children)
+               | otherwise ->
+                Html.node d.tag (dictToAttrList d.attributes) (List.map go d.children)
+        in
+        go
+
+      go p depth (Display d) =
+        if not d.folded
+        then div [] [preHtmlToHtml p d.content, div [] (List.indexedMap (\i -> go (i::p) (depth + 1)) d.children)]
+        else preHtmlToHtml p d.preview
   in
-  List.indexedMap (\i d -> go [i] 1 d)
+  go [] 1
 
