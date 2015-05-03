@@ -3,14 +3,43 @@ module Display where
 import Html exposing (..)
 import Html.Events exposing (onClick)
 import Debug
+import Json.Decode as Json exposing ((:=))
 
-type Display
+type SingleDisplay
   = Section
     { heading  : String
     , children : List Display
     , open     : Bool
     }
   | Html Html
+
+-- For now, we represent HTML as Json in the following way.
+-- { "tag" : String, "attributes": {String: String}, "children" : Array HTML }
+htmlOfJson : Json.Decoder Html
+htmlOfJson =
+  Json.object3 (\tag attrs cs -> Html.node tag attrs cs)
+    ("tag" := Json.string)
+    ("attributes" := Json.keyValuePairs Json.string)
+    ("children" := 
+
+recJson thunk = Json.customDecoder Json.value (\v -> Json.decodeValue (thunk ()) v)
+
+ofJson : Json.Decoder Display
+ofJson =
+  -- TODO: Check if the dummy arg is necessary. I suspect it is
+  let singleOfJson =
+        Json.oneOf
+        [ htmlOfJson
+        , Json.object2 (\h c -> Section {heading=h,children=c,open=False})
+            ("heading"  := Json.string)
+            ("children" := Json.list (recJson (\_ -> singleOfJson)))
+        -- hack to get around elm's inability to handle rec. values
+        , recJson (\_ -> singleOfJson)
+        ]
+  in
+  Json.list singleOfJson
+
+type alias Display = List SingleDisplay
 
 type alias Path = List Int
 
@@ -55,5 +84,5 @@ toHtml =
 
         Html h -> h
   in
-  go [] 1
+  List.indexedMap (\i d -> go [i] 1 d)
 

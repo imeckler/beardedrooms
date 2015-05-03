@@ -1,6 +1,7 @@
 module Digraph
-  ( Digraph, empty, addVertex, addEdge
-  , dataOfNode, valueOfNode, successorsOfNode, predecessorsOfNode
+  ( Digraph, empty, addVertex, addEdge, setValue, setValueUnchecked
+  , dataOfNode, getValue, getSuccessors, getPredecessors
+  , getValueExn
   ) where
 
 import Dict exposing (Dict)
@@ -63,12 +64,28 @@ addPredecessor pred e vd = { vd | incoming <- Dict.update pred (\_ -> Just e) vd
 dataOfNode : NodeID -> Digraph v e -> Maybe (VertexData v e)
 dataOfNode v g = M.get v g.graph
 
-valueOfNode : NodeID -> Digraph v e -> Maybe v
-valueOfNode v = Maybe.map .value << dataOfNode
+setValue : NodeID -> v -> Digraph v e -> Maybe (Digraph v e)
+setValue v x g =
+  if Dict.member v g.graph
+  then Just { g | graph <- Dict.insert v x g.graph }
+  else Nothing
 
-successorsOfNode : NodeID -> Digraph v e -> Maybe (Dict NodeID e)
-successorsOfNode v = Maybe.map .successors << dataOfNode
+-- Set the value for the given NodeID, returning the original graph if it
+-- wasn't present.
+setValueUnchecked : NodeID -> v -> Digraph v e -> Digraph v e
+setValueUnchecked v x g = {g | graph <- Dict.update (Maybe.map (\_ -> x)) v g.graph}
 
-predecessorsOfNode : NodeID -> Digraph v e -> Maybe (Dict NodeID e)
-predecessorsOfNode v = Maybe.map .predecessors << dataOfNode
+getValue : NodeID -> Digraph v e -> Maybe v
+getValue v = Maybe.map .value << dataOfNode
+
+getValueExn : NodeID -> Digraph v e -> v
+getValueExn v g = case getValue v g of
+  Just x  -> x
+  Nothing -> Debug.crash "valueOfNodeExn: Node not in graph"
+
+getSuccessors : NodeID -> Digraph v e -> Maybe (Dict NodeID e)
+getSuccessors v = Maybe.map .successors << dataOfNode
+
+getPredecessors : NodeID -> Digraph v e -> Maybe (Dict NodeID e)
+getPredecessors v = Maybe.map .predecessors << dataOfNode
 

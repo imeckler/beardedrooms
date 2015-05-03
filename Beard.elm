@@ -7,6 +7,6 @@ import DB exposing (DBID)
 
 type alias Beard =
   { freshID  : DBID
-  , displays : List Display
+  , display  : Display
   }
 

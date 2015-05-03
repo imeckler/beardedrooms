@@ -9,3 +9,4 @@ type Direction
   | Left | Right
 
 type alias House = Digraph Beard Direction
+
