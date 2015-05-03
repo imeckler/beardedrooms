@@ -1,0 +1,16 @@
+{ 
+  "objectID" : "chairs",
+  "display"  : {
+    "preview" : "Chairs are nice!"
+    "content" : {
+      "tag" : "a",
+      "attributes": {
+        "href" : "vel://chairs"
+      },
+      "children" : [
+        "Chairs!"
+      ]
+    },
+    "folded" : true
+  }
+}
