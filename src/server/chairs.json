@@ -1,7 +1,7 @@
 { 
   "objectID" : "chairs",
   "display"  : {
-    "preview" : "Chairs are nice!"
+    "preview" : "Chairs are nice!",
     "content" : {
       "tag" : "a",
       "attributes": {
@@ -11,6 +11,7 @@
         "Chairs!"
       ]
     },
-    "folded" : true
+    "folded" : true,
+    "children": []
   }
 }

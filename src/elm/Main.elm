@@ -1,5 +1,6 @@
 module Main where
 
+import Html exposing (Html)
 import House exposing (..)
 import Dict exposing (..)
 import Display exposing (Display(..), toggles, dbLinkClicks, Path)
@@ -11,6 +12,10 @@ import Task exposing (Task)
 import Set
 import Char
 import Keyboard
+import Debug
+import Mouse
+-- DEBUG
+import Json.Decode
 
 type UserAction
   = NavigateToDBID DBID
@@ -59,7 +64,7 @@ updates =
 
 keepWhen : a -> Signal Bool -> Signal a -> Signal a
 keepWhen x cond sx =
-  Signal.map2 (,) cond sx
+  Signal.map2 (,) (Signal.sampleOn sx cond) sx
   |> Signal.filter (\(b, _) -> b) (True, x)
   |> Signal.map snd
 
@@ -115,10 +120,42 @@ update u s = case u of
     in
     (Just task, s)
 
+  UserAction (NavigateToNode node) -> Debug.crash "TODO"
+
+  NoOp -> (Nothing, s)
+
 saveCurrent : State -> State
 saveCurrent s =
   let house' = Digraph.setValueUnchecked s.current.node s.current.beard s.house in
   { s | house <- house' }
 
-urlForId id = "http://localhost:3333/" ++ toString id
+urlForId id = "http://localhost:3000/data/" ++ id ++ ".json"
+
+
+initialState =
+  let disp = Display { preview = Display.Text "Hi!", content = Display.Text "Hi! Hi!", children = [], folded = True }
+  in
+  { house = Digraph.empty
+  , current = { beard = {objectID="yourmom", display=disp}, node = 0 } 
+  , instances = Dict.empty
+  }
+
+filterMap x f s =
+  Signal.map f s
+  |> Signal.filter (\mx -> case mx of { Just _ -> True; _ -> False }) (Just x)
+  |> Signal.map (\(Just x) -> x)
+
+tasksAndState = Signal.foldp (\u (_, s) -> update u s) (Nothing, initialState) (Signal.map (Debug.log "update") updates)
+state = Signal.map (Debug.log "state") <| Signal.map snd tasksAndState
+
+port tasks : Signal (Task Http.Error ())
+port tasks = filterMap (Task.succeed ()) fst tasksAndState
+
+main = 
+  Signal.map (.current >> .beard >> .display >> Display.toHtml >> Html.toElement 500 500) state
+
+port init : Task Http.Error ()
+port init = 
+  Http.get Beard.ofJson (urlForId "chairs") `Task.andThen` \beard ->
+    Signal.send updateBox.address (CreateAndNavigateTo beard)
 

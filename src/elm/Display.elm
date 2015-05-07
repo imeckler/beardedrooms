@@ -4,7 +4,7 @@ import Html exposing (..)
 import Html.Events exposing (onClick)
 import Debug
 import Json.Decode as Json exposing ((:=))
-import Html.Attributes
+import Html.Attributes exposing (style)
 import Dict exposing (Dict)
 import DB exposing (DBID)
 import Regex
@@ -69,8 +69,8 @@ modifyAt f p (Display d) = case p of
     Nothing             -> Debug.crash "Display.modifyAt: Invalid path. Not enough children"
     Just (pre, c, post) -> Display { d | children <- pre ++ modifyAt f p' c :: post }
 
-displayUpdateMailbox : Signal.Mailbox (Display -> Display)
-displayUpdateMailbox = Signal.mailbox identity
+togglesBox : Signal.Mailbox (Display -> Display)
+togglesBox = Signal.mailbox identity
 
 dbLinkClicksBox : Signal.Mailbox (Maybe (DBID, Path))
 dbLinkClicksBox = Signal.mailbox Nothing
@@ -78,16 +78,15 @@ dbLinkClicksBox = Signal.mailbox Nothing
 dbLinkClicks = dbLinkClicksBox.signal
 
 toggles : Signal (Display -> Display)
-toggles = displayUpdateMailbox.signal
+toggles = togglesBox.signal
 
 toHtml : Display -> Html
 toHtml =
-  let addr = displayUpdateMailbox.address
-      dictToAttrList = List.map (\(k,v) -> Html.Attributes.attribute k v) << Dict.toList
+  let dictToAttrList = List.map (\(k,v) -> Html.Attributes.attribute k v) << Dict.toList
       matchVelUrl =
         let velUrlRegex = Regex.regex "vel://(.*)" in
         \u -> case Regex.find (Regex.AtMost 1) velUrlRegex u of
-          m :: _ -> nth 1 m.submatches `Maybe.andThen` identity
+          m :: _ -> nth 0 m.submatches `Maybe.andThen` identity
           []     -> Nothing
 
       preHtmlToHtml path =
@@ -98,21 +97,31 @@ toHtml =
                 case Dict.get "href" d.attributes of
                   Nothing  -> Html.node "a" (dictToAttrList d.attributes) (List.map go d.children)
                   Just url -> 
-                    let onClickAttr =
-                          Maybe.map (\dbID -> onClick dbLinkClicksBox.address (Just (dbID, path)))
-                            (matchVelUrl url)
-                    in
-                    Html.node "a" (maybeCons onClickAttr <| dictToAttrList d.attributes)
-                      (List.map go d.children)
+                    Debug.log "1" <|
+                    case matchVelUrl url of
+                      Just dbID ->
+                        Debug.log "eyo!" <|
+                        Html.span
+                        ([ onClick dbLinkClicksBox.address (Just (dbID, path))
+                        , style
+                          [ ("color", "blue")
+                          ]
+                        ] ++ dictToAttrList d.attributes)
+                        (List.map go d.children)
+
+                      Nothing ->
+                        Html.node "a" (dictToAttrList d.attributes)
+                          (List.map go d.children)
                | otherwise ->
                 Html.node d.tag (dictToAttrList d.attributes) (List.map go d.children)
         in
         go
 
       go p depth (Display d) =
+        let toggleButton = div [onClick togglesBox.address (toggleAt p)] [Html.text "Toggle!"] in
         if not d.folded
-        then div [] [preHtmlToHtml p d.content, div [] (List.indexedMap (\i -> go (i::p) (depth + 1)) d.children)]
-        else preHtmlToHtml p d.preview
+        then div [] [toggleButton, preHtmlToHtml p d.content, div [] (List.indexedMap (\i -> go (i::p) (depth + 1)) d.children)]
+        else div [] [toggleButton, preHtmlToHtml p d.preview]
   in
   go [] 1
 
