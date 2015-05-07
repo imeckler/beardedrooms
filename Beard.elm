@@ -131,11 +131,45 @@ forestModifyAt update id loc (Forest forest) =
          in
          Forest { forest | trees <- newTrees }
  
+treeInsert : DisplayTree -> Location -> DisplayTree -> DisplayTree
+treeInsert addTree loc oldTree = case loc of
+  [] -> Debug.crash "Beard.treeInsert: can't insert at root" 
+  _  ->
+    let 
+
+      newTree = treeMap (nodeModifyLocation <| (++) loc) addTree
+
+      treeIntoForest : Forest -> Forest  
+      treeIntoForest (Forest forest) = need the newTRee mapped with append loc to nodelocations
+    then modify at the oldtree at the loc
+    in 
+    treeModifyAt treeIntoForest loc oldTree
+
+nodeModifyLocation : (Location -> Location) -> NodeData -> NodeData
+nodeModifyLocation update node = 
+  { node | location <- update location }
+
+treeMap : (NodeData -> NodeData) -> DisplayTree -> DisplayTree
+treeMap update tree =
+  let newNodeData = update tree.nodeData
+      forestUpdate = forestMap update 
+      newChildren = 
+        { children | upNodes   <- forestUpdate tree.children.upNodes
+                   , downNodes <- forestUpdate tree.children.downNodes
+                   , overNodes <- forestUpdate tree.children.overNodes
+        }
+  in 
+  { tree | nodeData <- newNodeData, children = newChildren }
+
+forestMap : (NodeData -> NodeData) -> Forest -> Forest
+forestMap update (Forest forest) =
+  { forest | trees <- Dict.map (\_ -> treeMap update) forest.trees }
+
+--want the mod node location thing
+--want the append and strip funs
 
 
-
-
-
+{-
 treeInsert : DisplayTree -> Location -> DisplayTree -> DisplayTree
 treeInsert newTree loc oldTree = case loc of
   [] -> Debug.crash "Beard.treeInsert: can't insert at root" 
@@ -169,12 +203,13 @@ forestInsertRec newTree id kind loc (Forest forest) =
 forestInsertNew : DisplayTree -> NodeID -> NodeKind -> Forest -> Forest
 forestInsertNew newTree id kind (Forest forest) =
   if Dict.member id forest.trees 
-  then Debug.crash "Bearh.forestInsertNew: id already exists"
+  then Debug.crash "Beard.forestInsertNew: id already exists"
   else 
     let newTrees = Dict.insert id newTree forest.trees
         newOrder = orderInsert id kind forest.order
     in
     Forest { trees = newTrees, order = newOrder }
+-}
 
 orderInsert : NodeID -> NodeKind -> Order -> Order 
 orderInsert id kind order =  
