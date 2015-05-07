@@ -100,6 +100,42 @@ emptyForest =
     , order = LinearOrder.empty
     }  
 
+treeModifyAt : (Forest -> Forest) -> Location -> DisplayTree ->
+  DisplayTree
+treeModifyAt update loc oldTree =
+  [] -> Debug.crash "Beard.treeInsert: can't modify at root" 
+  (id,kind)::loc' ->
+    let new = forestModifyAt update id loc'  
+        children = oldTree.children
+        newchildren =
+          case kind of
+            UpNode ->
+              { children | upNodes <- new children.upNodes }
+            DownNode ->
+              { children | downNodes <- new children.downNodes }
+            OverNode ->
+              { children | overNodes <- new children.overNodes }
+   in 
+   { oldTree | children <- newchildren }
+
+forestModifyAt : (Forest -> Forest) -> NodeID -> Location -> Forest -> Forest 
+forestModifyAt update id loc (Forest forest) =
+  case loc of 
+    [] -> update (Forest forest)
+    _ -> case Dict.get id forest.trees of
+       Nothing ->
+         Debug.crash "Beard.forestInsertRec: no such location"
+       Just tree -> 
+         let updatedTree = treeModifyAt update loc tree
+             newTrees = Dict.update id (\_ -> Just updatedTree) forest.trees
+         in
+         Forest { forest | trees <- newTrees }
+ 
+
+
+
+
+
 treeInsert : DisplayTree -> Location -> DisplayTree -> DisplayTree
 treeInsert newTree loc oldTree = case loc of
   [] -> Debug.crash "Beard.treeInsert: can't insert at root" 
