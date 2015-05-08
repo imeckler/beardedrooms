@@ -6,6 +6,7 @@ import Object exposing (Object)
 import LinearOrder exposing (LinearOrder)
 import Dict exposing (Dict)
 import Debug
+import Json.Decode as Json exposing ((:=))
 
 type alias Beard =
   { freshID : NodeID
@@ -13,17 +14,38 @@ type alias Beard =
   }
 --  , currentFocus : NodeID --or Location?
 
+ofJson : Json.Decoder Beard
+ofJson = Json.object2 Beard
+  ("freshID"   := Json.int)
+  ("treeBeard" := displayTreeOfJson)
+
 type alias DisplayTree =
   { nodeData : NodeData
   , children : Children
   }
+
+displayTreeOfJson : Json.Decoder DisplayTree
+displayTreeOfJson = Json.object2 DisplayTree
+  ("nodeData" := nodeDataOfJson)
+  ("children" := childrenOfJson)
 
 type alias NodeData =
   { value : Object.ObjectInContext
   , location : Location
   }
 
+nodeDataOfJson : Json.Decoder NodeData
+nodeDataOfJson = Json.object2 NodeData
+  ("value"    := Json.string)
+  ("location" := locationOfJson)
+
 type NodeKind = UpNode | DownNode | OverNode --more
+
+nodeKindOfJson : Json.Decoder NodeKind
+nodeKindOfJson = \kind -> case kind of 
+    UpNode   -> Json.string "UpNode"
+    DownNode -> Json.string "DownNode"
+    OverNode -> Json.string "OverNode"
 
 type alias NodeID = Int
 
@@ -32,20 +54,44 @@ DownNode labelled 6 of the UpNode labelled 3
 of the root -}
 type alias Location = List (NodeID,NodeKind)
 
+locationOfJson : Json.Decoder Location
+locationOfJson = Json.list <| Json.object2 (,)
+  ("id"   := Json.int)
+  ("kind" := nodeKindOfJson)
+
 type alias Children =
-  { upNodes : Forest
+  { upNodes   : Forest
   , downNodes : Forest
   , overNodes : Forest
   --maybe left, right and under nodes
   }   
  
-type Forest = 
-  Forest
-    { trees : Dict.Dict NodeID DisplayTree
-    , order : Order
-    }
+childrenOfJson : Json.Decoder Children 
+childrenOfJson = Json.object3 Children
+  ("upNodes"   := forestOfJson)
+  ("downNodes" := forestOfJson)
+  ("overNodes" := forestOfJson)
+
+--because can't have totally openended recursive records
+type Forest = Forest ActualForest
+
+forestOfJson : Json.Decoder Forest
+forestOfJson = \(Forest forest) -> actualForestOfJson forest
+
+type alias ActualForest =
+  { trees : Dict.Dict NodeID DisplayTree
+  , order : Order
+  }
+
+actualForestOfJson : Json.Decoder ActualForest
+actualForestOfJson = Json.object2 ActualForest
+  ("trees" := Json.null)
+  ("order" := orderOfJson)
 
 type alias Order = LinearOrder.LinearOrder NodeID
+
+orderOfJson : Json.Decoder Order
+orderOfJson = Json.list Json.int
 
 singleton : Object.ObjectInContext -> Beard
 singleton obj =
@@ -102,7 +148,7 @@ emptyForest =
 
 treeModifyAt : (Forest -> Forest) -> Location -> DisplayTree ->
   DisplayTree
-treeModifyAt update loc oldTree =
+treeModifyAt update loc oldTree = case loc of 
   [] -> Debug.crash "Beard.treeInsert: can't modify at root" 
   (id,kind)::loc' ->
     let new = forestModifyAt update id loc'  
@@ -136,38 +182,77 @@ treeInsert addTree loc oldTree = case loc of
   [] -> Debug.crash "Beard.treeInsert: can't insert at root" 
   _  ->
     let 
-
-      newTree = treeMap (nodeModifyLocation <| (++) loc) addTree
-
-      treeIntoForest : Forest -> Forest  
-      treeIntoForest (Forest forest) = need the newTRee mapped with append loc to nodelocations
-    then modify at the oldtree at the loc
+      newTree = pushLocation loc addTree
+      updateForest = treeIntoForest newTree loc
     in 
-    treeModifyAt treeIntoForest loc oldTree
+    treeModifyAt updateForest loc oldTree
 
+treeIntoForest : DisplayTree -> Location -> Forest -> Forest
+treeIntoForest tree loc (Forest forest) =
+  case List.head <| List.reverse loc of 
+    Nothing -> Debug.crash "Beard.treeIntoForest was passed an empty location"
+    Just (id,kind) -> 
+      if Dict.member id forest.trees 
+      then Debug.crash "Beard.treeIntoForest: id already exists"
+      else 
+        let newTrees = Dict.insert id tree forest.trees
+            newOrder = orderInsert id kind forest.order
+        in
+        Forest { trees = newTrees, order = newOrder }
+
+{-
+treeReorderAbove : Location -> NodeID -> DisplayTree -> DisplayTree
+treeReorderAbove loc id oldTree = 
+  treeModifyAt fun loc oldTree
+  fun stuff (Forest forest) = 
+    { forest | trees <- forest.trees
+-}  
+
+orderInsert : NodeID -> NodeKind -> Order -> Order 
+orderInsert id kind order =  
+  case kind of
+    DownNode -> LinearOrder.insertTop id order
+    UpNode -> LinearOrder.insertBottom id order
+    OverNode -> LinearOrder.insertBottom id order
+ 
 nodeModifyLocation : (Location -> Location) -> NodeData -> NodeData
 nodeModifyLocation update node = 
-  { node | location <- update location }
+  { node | location <- update node.location }
 
 treeMap : (NodeData -> NodeData) -> DisplayTree -> DisplayTree
 treeMap update tree =
   let newNodeData = update tree.nodeData
       forestUpdate = forestMap update 
+      oldChildren = tree.children 
       newChildren = 
-        { children | upNodes   <- forestUpdate tree.children.upNodes
-                   , downNodes <- forestUpdate tree.children.downNodes
-                   , overNodes <- forestUpdate tree.children.overNodes
+        { oldChildren
+            | upNodes   <- forestUpdate tree.children.upNodes
+            , downNodes <- forestUpdate tree.children.downNodes
+            , overNodes <- forestUpdate tree.children.overNodes
         }
   in 
-  { tree | nodeData <- newNodeData, children = newChildren }
+  { tree | nodeData <- newNodeData, children <- newChildren }
 
 forestMap : (NodeData -> NodeData) -> Forest -> Forest
 forestMap update (Forest forest) =
-  { forest | trees <- Dict.map (\_ -> treeMap update) forest.trees }
+  Forest { forest | trees <- Dict.map (\_ -> treeMap update) forest.trees }
 
---want the mod node location thing
---want the append and strip funs
+popLocation : Location -> DisplayTree -> DisplayTree
+popLocation loc tree =
+  let 
+    munchLoc popped loc' = case (popped, loc') of 
+      ([],_) -> loc' 
+      (_,[]) -> Debug.crash "Beard.popLocation: can't pop from empty location"
+      (pop::ps, loc'::ls) ->
+        if pop == loc'
+           then munchLoc ps ls
+           else Debug.crash "Beard.popLocation: can't pop a non-initial-segment"
+  in 
+  treeMap (nodeModifyLocation <| munchLoc loc) tree
 
+pushLocation : Location -> DisplayTree -> DisplayTree
+pushLocation loc tree =
+  treeMap (nodeModifyLocation <| (++) loc) tree
 
 {-
 treeInsert : DisplayTree -> Location -> DisplayTree -> DisplayTree
@@ -211,13 +296,6 @@ forestInsertNew newTree id kind (Forest forest) =
     Forest { trees = newTrees, order = newOrder }
 -}
 
-orderInsert : NodeID -> NodeKind -> Order -> Order 
-orderInsert id kind order =  
-  case kind of
-    DownNode -> LinearOrder.insertTop id order
-    UpNode -> LinearOrder.insertBottom id order
-    OverNode -> LinearOrder.insertBottom id order
- 
 idFromData : NodeData -> NodeID
 idFromData nodeData =
   case nodeData.location |> List.reverse |> List.head of

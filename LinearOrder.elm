@@ -3,6 +3,7 @@ module LinearOrder
   , empty
   , insertTop, insertBottom, insertAbove, insertBelow
   , moveUp, moveDown
+  , delete, moveAbove, moveBelow
   , atTop, atBottom, member
   ) where
 
@@ -32,6 +33,21 @@ insertAbove new place vs =
 insertBelow : v -> v -> LinearOrder v -> LinearOrder v
 insertBelow new place vs =
   List.reverse vs |> insertAbove new place |> List.reverse
+
+delete : v -> LinearOrder v -> LinearOrder v
+delete v vs = case vs of 
+    []   -> []
+    h::t -> if h == v 
+               then t
+               else h :: delete v t
+
+moveAbove : v -> v -> LinearOrder v -> LinearOrder v
+moveAbove v place vs =
+  delete v vs |> insertAbove v place
+
+moveBelow : v -> v -> LinearOrder v -> LinearOrder v
+moveBelow v place vs =
+  delete v vs |> insertBelow v place
 
 {-allows dumb things like moving something
 not in the list, moving something already 
