@@ -14,38 +14,17 @@ type alias Beard =
   }
 --  , currentFocus : NodeID --or Location?
 
-ofJson : Json.Decoder Beard
-ofJson = Json.object2 Beard
-  ("freshID"   := Json.int)
-  ("treeBeard" := displayTreeOfJson)
-
 type alias DisplayTree =
   { nodeData : NodeData
   , children : Children
   }
-
-displayTreeOfJson : Json.Decoder DisplayTree
-displayTreeOfJson = Json.object2 DisplayTree
-  ("nodeData" := nodeDataOfJson)
-  ("children" := childrenOfJson)
 
 type alias NodeData =
   { value : Object.ObjectInContext
   , location : Location
   }
 
-nodeDataOfJson : Json.Decoder NodeData
-nodeDataOfJson = Json.object2 NodeData
-  ("value"    := Json.string)
-  ("location" := locationOfJson)
-
 type NodeKind = UpNode | DownNode | OverNode --more
-
-nodeKindOfJson : Json.Decoder NodeKind
-nodeKindOfJson = \kind -> case kind of 
-    UpNode   -> Json.string "UpNode"
-    DownNode -> Json.string "DownNode"
-    OverNode -> Json.string "OverNode"
 
 type alias NodeID = Int
 
@@ -54,44 +33,22 @@ DownNode labelled 6 of the UpNode labelled 3
 of the root -}
 type alias Location = List (NodeID,NodeKind)
 
-locationOfJson : Json.Decoder Location
-locationOfJson = Json.list <| Json.object2 (,)
-  ("id"   := Json.int)
-  ("kind" := nodeKindOfJson)
-
 type alias Children =
   { upNodes   : Forest
   , downNodes : Forest
   , overNodes : Forest
   --maybe left, right and under nodes
   }   
- 
-childrenOfJson : Json.Decoder Children 
-childrenOfJson = Json.object3 Children
-  ("upNodes"   := forestOfJson)
-  ("downNodes" := forestOfJson)
-  ("overNodes" := forestOfJson)
 
 --because can't have totally openended recursive records
 type Forest = Forest ActualForest
-
-forestOfJson : Json.Decoder Forest
-forestOfJson = \(Forest forest) -> actualForestOfJson forest
 
 type alias ActualForest =
   { trees : Dict.Dict NodeID DisplayTree
   , order : Order
   }
 
-actualForestOfJson : Json.Decoder ActualForest
-actualForestOfJson = Json.object2 ActualForest
-  ("trees" := Json.null)
-  ("order" := orderOfJson)
-
 type alias Order = LinearOrder.LinearOrder NodeID
-
-orderOfJson : Json.Decoder Order
-orderOfJson = Json.list Json.int
 
 singleton : Object.ObjectInContext -> Beard
 singleton obj =
@@ -106,12 +63,10 @@ insert : Object.ObjectInContext -> Location ->
 insert obj loc kind beard =
   let id = beard.freshID 
       loc' = loc ++ [(id,kind)]
-      newTree = singletonTree { value = obj, location = loc'}
-      newTreeBeard = treeInsert newTree loc' beard.treeBeard 
+      newTreeBeard = treeInsert (emptyTree obj) loc' beard.treeBeard 
   in 
   ( loc', { freshID = id + 1, treeBeard = newTreeBeard } )
 
-{-
 delete : Location -> Beard -> Beard
 delete loc beard =
   { beard | treeBeard <- treeDelete loc beard.treeBeard }
@@ -120,21 +75,14 @@ move : Location -> Location -> Beard -> Beard
 move oldLoc newLoc beard =
   { beard | treeBeard <- treeMove oldLoc newLoc beard.treeBeard }
 
-treeMove : Location -> Location -> DisplayTree
-treeMove oldLoc newLoc tree =
-  let (beard',tree) = treeDelete oldLoc beard
-  in 
-  insert
--}
-
-singletonTree : NodeData -> DisplayTree
-singletonTree data =
- { nodeData = data
+emptyTree : NodeData -> DisplayTree
+emptyTree obj =
+ { nodeData = { value = obj, location = [] }
  , children = emptyChildren }
 
 emptyChildren : Children
 emptyChildren = 
-  { upNodes = emptyForest
+  { upNodes   = emptyForest
   , downNodes = emptyForest
   , overNodes = emptyForest
   }
@@ -168,7 +116,7 @@ forestModifyAt : (Forest -> Forest) -> NodeID -> Location -> Forest -> Forest
 forestModifyAt update id loc (Forest forest) =
   case loc of 
     [] -> update (Forest forest)
-    _ -> case Dict.get id forest.trees of
+    _  -> case Dict.get id forest.trees of
        Nothing ->
          Debug.crash "Beard.forestInsertRec: no such location"
        Just tree -> 
@@ -177,6 +125,36 @@ forestModifyAt update id loc (Forest forest) =
          in
          Forest { forest | trees <- newTrees }
  
+treeGet : Location -> DisplayTree -> DisplayTree
+treeGet loc tree = case loc of
+  []              -> tree
+  (id,kind)::loc' ->
+    let get = forestGet id loc'  
+        children = tree.children
+    in 
+    case kind of
+      UpNode   -> get children.upNodes
+      DownNode -> get children.downNodes
+      OverNode -> get children.overNodes
+
+forestGet : NodeID -> Location -> Forest -> DisplayTree
+forestGet id loc (Forest forest) =
+  case Dict.get id forest.trees of
+    Nothing   -> Debug.get "Beard.forestGet: bad location, no such id"
+    Just tree -> treeGet loc tree
+
+treeDelete : Location -> DisplayTree -> (DisplayTree, DisplayTree)
+treeDelete loc tree =
+  let deleted = treeGet loc tree
+      updated = treeModifyAt (treeFromForest loc) loc tree
+  in
+  (deleted,updated)
+
+treeFromForest : Location -> Forest -> Forest
+treeFromForest loc (Forest forest) =
+  let (id,_) = infoFromLoc loc
+      newWorldOrder = LinearOrder.delete (idFromLoc loc) forest.order
+
 treeInsert : DisplayTree -> Location -> DisplayTree -> DisplayTree
 treeInsert addTree loc oldTree = case loc of
   [] -> Debug.crash "Beard.treeInsert: can't insert at root" 
@@ -189,16 +167,15 @@ treeInsert addTree loc oldTree = case loc of
 
 treeIntoForest : DisplayTree -> Location -> Forest -> Forest
 treeIntoForest tree loc (Forest forest) =
-  case List.head <| List.reverse loc of 
-    Nothing -> Debug.crash "Beard.treeIntoForest was passed an empty location"
-    Just (id,kind) -> 
-      if Dict.member id forest.trees 
-      then Debug.crash "Beard.treeIntoForest: id already exists"
-      else 
-        let newTrees = Dict.insert id tree forest.trees
-            newOrder = orderInsert id kind forest.order
-        in
-        Forest { trees = newTrees, order = newOrder }
+  let (id,kind) = infoFromLoc loc
+  in
+    if Dict.member id forest.trees 
+    then Debug.crash "Beard.treeIntoForest: id already exists"
+    else 
+      let newTrees = Dict.insert id tree forest.trees
+          newOrder = orderInsert id kind forest.order
+      in
+      Forest { trees = newTrees, order = newOrder }
 
 {-
 treeReorderAbove : Location -> NodeID -> DisplayTree -> DisplayTree
@@ -254,47 +231,11 @@ pushLocation : Location -> DisplayTree -> DisplayTree
 pushLocation loc tree =
   treeMap (nodeModifyLocation <| (++) loc) tree
 
-{-
-treeInsert : DisplayTree -> Location -> DisplayTree -> DisplayTree
-treeInsert newTree loc oldTree = case loc of
-  [] -> Debug.crash "Beard.treeInsert: can't insert at root" 
-  (id,kind)::loc' ->
-    let new = forestInsertRec newTree id kind loc'  
-        children = oldTree.children
-        newchildren =
-          case kind of
-            UpNode ->
-              { children | upNodes <- new children.upNodes }
-            DownNode ->
-              { children | downNodes <- new children.downNodes }
-            OverNode ->
-              { children | overNodes <- new children.overNodes }
-   in 
-   { oldTree | children <- newchildren }
-
-forestInsertRec : DisplayTree -> NodeID -> NodeKind -> Location -> Forest -> Forest 
-forestInsertRec newTree id kind loc (Forest forest) =
-  case loc of 
-    [] -> forestInsertNew newTree id kind (Forest forest)
-    _ -> case Dict.get id forest.trees of
-       Nothing ->
-         Debug.crash "Beard.forestInsertRec: no such location"
-       Just tree -> 
-         let updatedTree = treeInsert newTree loc tree
-             newTrees = Dict.update id (\_ -> Just updatedTree) forest.trees
-         in
-         Forest { forest | trees <- newTrees }
-   
-forestInsertNew : DisplayTree -> NodeID -> NodeKind -> Forest -> Forest
-forestInsertNew newTree id kind (Forest forest) =
-  if Dict.member id forest.trees 
-  then Debug.crash "Beard.forestInsertNew: id already exists"
-  else 
-    let newTrees = Dict.insert id newTree forest.trees
-        newOrder = orderInsert id kind forest.order
-    in
-    Forest { trees = newTrees, order = newOrder }
--}
+infoFromLoc : Location -> (NodeID,NodeKind) 
+infoFromLoc loc =
+  case List.head <| List.reverse loc of 
+    Nothing -> Debug.crash "Beard.infoFromLoc was passed an empty location"
+    Just (id,kind) -> (id,kind)
 
 idFromData : NodeData -> NodeID
 idFromData nodeData =
@@ -308,4 +249,56 @@ kindFromData nodeData =
     Nothing -> Debug.crash "Beard.kindFromData: node has no location"
     Just (_,kind) -> kind
 
+
+{-
+
+ofJson : Json.Decoder Beard
+ofJson = Json.object2 Beard
+  ("freshID"   := Json.int)
+  ("treeBeard" := displayTreeOfJson)
+
+displayTreeOfJson : Json.Decoder DisplayTree
+displayTreeOfJson = Json.object2 DisplayTree
+  ("nodeData" := nodeDataOfJson)
+  ("children" := childrenOfJson)
+
+nodeDataOfJson : Json.Decoder NodeData
+nodeDataOfJson = Json.object2 NodeData
+  ("value"    := Json.string)
+  ("location" := locationOfJson)
+
+nodeKindOfJson : Json.Decoder NodeKind
+nodeKindOfJson = Json.null UpNode
+{-
+nodeKindOfJson = Json.customDecoder 
+  (\kind -> case kind of 
+  UpNode   -> Json.string "UpNode"
+  DownNode -> Json.string "DownNode"
+  OverNode -> Json.string "OverNode"
+  )
+-}
+
+locationOfJson : Json.Decoder Location
+locationOfJson = Json.list <| Json.object2 (,)
+  ("id"   := Json.int)
+  ("kind" := nodeKindOfJson)
+
+childrenOfJson : Json.Decoder Children 
+childrenOfJson = Json.object3 Children
+  ("upNodes"   := forestOfJson)
+  ("downNodes" := forestOfJson)
+  ("overNodes" := forestOfJson)
+
+forestOfJson : Json.Decoder Forest
+forestOfJson = Json.map Forest actualForestOfJson
+
+actualForestOfJson : Json.Decoder ActualForest
+actualForestOfJson = Json.object2 ActualForest
+  ("trees" := Json.null Dict.empty ) --TODO
+  ("order" := orderOfJson)
+
+orderOfJson : Json.Decoder Order
+orderOfJson = Json.list Json.int
+
+-}
 
