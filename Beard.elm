@@ -50,6 +50,8 @@ type alias ActualForest =
 
 type alias Order = LinearOrder.LinearOrder NodeID
 
+--Beard funs
+
 singleton : Object.ObjectInContext -> Beard
 singleton obj =
   let nodeData =
@@ -69,11 +71,15 @@ insert obj loc kind beard =
 
 delete : Location -> Beard -> Beard
 delete loc beard =
-  { beard | treeBeard <- treeDelete loc beard.treeBeard }
+  let (_,updated) = treeDelete loc beard.treeBeard
+  in
+  { beard | treeBeard <- updated }
 
 move : Location -> Location -> Beard -> Beard
 move oldLoc newLoc beard =
   { beard | treeBeard <- treeMove oldLoc newLoc beard.treeBeard }
+
+--emptys
 
 emptyTree : NodeData -> DisplayTree
 emptyTree obj =
@@ -93,6 +99,8 @@ emptyForest =
     { trees = Dict.empty
     , order = LinearOrder.empty
     }  
+
+--basic tree operations
 
 treeModifyAt : (Forest -> Forest) -> Location -> DisplayTree ->
   DisplayTree
@@ -180,13 +188,31 @@ treeIntoForest tree loc (Forest forest) =
       in
       Forest { trees = newTrees, order = newOrder }
 
-{-
+--composed operations
+
+treeMove : Location -> Location -> NodeKind -> DisplayTree -> DisplayTree
+treeMove oldPlace newParent kind tree =
+  let (deleted,updated) = treeDelete oldPlace tree
+      (id,_) = infoFromLoc oldPlace
+      newPlace = newParent ++ [(id,kind)]
+  in
+  treeInsert deleted newPlace updated
+
 treeReorderAbove : Location -> NodeID -> DisplayTree -> DisplayTree
-treeReorderAbove loc id oldTree = 
-  treeModifyAt fun loc oldTree
-  fun stuff (Forest forest) = 
-    { forest | trees <- forest.trees
--}  
+treeReorderAbove loc newPlace tree = 
+  let (id,_) = infoFromLoc loc
+
+      reorder : Forest -> Forest
+      reorder (Forest forest) = 
+        let newWorldOrder = LinearOrder.moveAbove id newPlace forest.order
+        in
+        Forest { forest | order <- newWorldOrder }
+  in
+  treeModifyAt reorder loc tree
+
+treeReorder : Location -> (--TODO
+
+--helper funs
 
 orderInsert : NodeID -> NodeKind -> Order -> Order 
 orderInsert id kind order =  
@@ -252,56 +278,4 @@ kindFromData nodeData =
     Nothing -> Debug.crash "Beard.kindFromData: node has no location"
     Just (_,kind) -> kind
 
-
-{-
-
-ofJson : Json.Decoder Beard
-ofJson = Json.object2 Beard
-  ("freshID"   := Json.int)
-  ("treeBeard" := displayTreeOfJson)
-
-displayTreeOfJson : Json.Decoder DisplayTree
-displayTreeOfJson = Json.object2 DisplayTree
-  ("nodeData" := nodeDataOfJson)
-  ("children" := childrenOfJson)
-
-nodeDataOfJson : Json.Decoder NodeData
-nodeDataOfJson = Json.object2 NodeData
-  ("value"    := Json.string)
-  ("location" := locationOfJson)
-
-nodeKindOfJson : Json.Decoder NodeKind
-nodeKindOfJson = Json.null UpNode
-{-
-nodeKindOfJson = Json.customDecoder 
-  (\kind -> case kind of 
-  UpNode   -> Json.string "UpNode"
-  DownNode -> Json.string "DownNode"
-  OverNode -> Json.string "OverNode"
-  )
--}
-
-locationOfJson : Json.Decoder Location
-locationOfJson = Json.list <| Json.object2 (,)
-  ("id"   := Json.int)
-  ("kind" := nodeKindOfJson)
-
-childrenOfJson : Json.Decoder Children 
-childrenOfJson = Json.object3 Children
-  ("upNodes"   := forestOfJson)
-  ("downNodes" := forestOfJson)
-  ("overNodes" := forestOfJson)
-
-forestOfJson : Json.Decoder Forest
-forestOfJson = Json.map Forest actualForestOfJson
-
-actualForestOfJson : Json.Decoder ActualForest
-actualForestOfJson = Json.object2 ActualForest
-  ("trees" := Json.null Dict.empty ) --TODO
-  ("order" := orderOfJson)
-
-orderOfJson : Json.Decoder Order
-orderOfJson = Json.list Json.int
-
--}
 
