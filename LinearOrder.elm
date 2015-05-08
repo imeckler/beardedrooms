@@ -5,6 +5,7 @@ module LinearOrder
   , moveUp, moveDown
   , delete, moveAbove, moveBelow
   , atTop, atBottom, member
+  , heads
   ) where
 
 import Dict exposing (Dict)
@@ -79,6 +80,9 @@ atBottom v vs =
 
 member : v -> LinearOrder v -> Bool
 member = List.member
+
+heads : LinearOrder v -> Maybe (LinearOrder v)
+heads vs = List.reverse vs |> List.tail
 
 
 --too complicated for now

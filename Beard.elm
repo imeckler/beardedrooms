@@ -201,7 +201,6 @@ treeMove oldPlace newParent kind tree =
 treeReorderAbove : Location -> NodeID -> DisplayTree -> DisplayTree
 treeReorderAbove loc newPlace tree = 
   let (id,_) = infoFromLoc loc
-
       reorder : Forest -> Forest
       reorder (Forest forest) = 
         let newWorldOrder = LinearOrder.moveAbove id newPlace forest.order
@@ -210,7 +209,24 @@ treeReorderAbove loc newPlace tree =
   in
   treeModifyAt reorder loc tree
 
-treeReorder : Location -> (--TODO
+treeReorderBelow : Location -> NodeID -> DisplayTree -> DisplayTree
+treeReorderBelow loc newPlace tree = 
+  let (id,_) = infoFromLoc loc
+      reorder : Forest -> Forest
+      reorder (Forest forest) = 
+        let newWorldOrder = LinearOrder.moveBelow id newPlace forest.order
+        in
+        Forest { forest | order <- newWorldOrder }
+  in
+  treeModifyAt reorder loc tree
+
+disownChildren : Location -> DisplayTree -> DisplayTree
+disownChildren loc tree =
+  case LinearOrder.heads loc of
+    Nothing     -> Debug.crash "Beard.disownChildren: parent needs a parent"
+    Just parent -> 
+      --TODO get loc, then fold acroos upnodes treemovingabove, then down nodes
+      --below
 
 --helper funs
 
