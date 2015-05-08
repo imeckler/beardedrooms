@@ -145,7 +145,7 @@ forestGet id loc (Forest forest) =
 
 treeDelete : Location -> DisplayTree -> (DisplayTree, DisplayTree)
 treeDelete loc tree =
-  let deleted = treeGet loc tree
+  let deleted = treeGet loc tree |> popLocation loc
       updated = treeModifyAt (treeFromForest loc) loc tree
   in
   (deleted,updated)
@@ -153,7 +153,10 @@ treeDelete loc tree =
 treeFromForest : Location -> Forest -> Forest
 treeFromForest loc (Forest forest) =
   let (id,_) = infoFromLoc loc
-      newWorldOrder = LinearOrder.delete (idFromLoc loc) forest.order
+      newWorldOrder = LinearOrder.delete id forest.order
+      newTrees = Dict.remove id forest.trees
+  in
+  Forest { forest | trees <- newTrees, order <- newWorldOrder }
 
 treeInsert : DisplayTree -> Location -> DisplayTree -> DisplayTree
 treeInsert addTree loc oldTree = case loc of
