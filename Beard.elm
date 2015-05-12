@@ -54,18 +54,16 @@ type alias Order = LinearOrder.LinearOrder NodeID
 
 singleton : Object.ObjectInContext -> Beard
 singleton obj =
-  let nodeData =
-        { value = obj, location = [] } 
-  in
   { freshID = 0
-  , treeBeard = singletonTree nodeData } 
+  , treeBeard = singletonTree obj } 
 
+--ideally location shouldn't really be returned here
 insert : Object.ObjectInContext -> Location ->
          NodeKind -> Beard -> (Location,Beard)
 insert obj loc kind beard =
   let id = beard.freshID 
       loc' = loc ++ [(id,kind)]
-      newTreeBeard = treeInsert (emptyTree obj) loc' beard.treeBeard 
+      newTreeBeard = treeInsert (singletonTree obj) loc' beard.treeBeard 
   in 
   ( loc', { freshID = id + 1, treeBeard = newTreeBeard } )
 
@@ -75,14 +73,16 @@ delete loc beard =
   in
   { beard | treeBeard <- updated }
 
-move : Location -> Location -> Beard -> Beard
-move oldLoc newLoc beard =
-  { beard | treeBeard <- treeMove oldLoc newLoc beard.treeBeard }
+move : Location -> Location -> NodeKind -> Beard -> Beard
+move oldLoc newLoc kind beard =
+  let (_,newBeard) = treeMove oldLoc newLoc kind beard.treeBeard
+  in
+  { beard | treeBeard <- newBeard }
 
 --emptys
 
-emptyTree : NodeData -> DisplayTree
-emptyTree obj =
+singletonTree : Object.ObjectInContext -> DisplayTree
+singletonTree obj =
  { nodeData = { value = obj, location = [] }
  , children = emptyChildren }
 
@@ -148,18 +148,18 @@ treeGet loc tree = case loc of
 forestGet : NodeID -> Location -> Forest -> DisplayTree
 forestGet id loc (Forest forest) =
   case Dict.get id forest.trees of
-    Nothing   -> Debug.get "Beard.forestGet: bad location, no such id"
+    Nothing   -> Debug.crash "Beard.forestGet: bad location, no such id"
     Just tree -> treeGet loc tree
 
 treeDelete : Location -> DisplayTree -> (DisplayTree, DisplayTree)
 treeDelete loc tree =
   let deleted = treeGet loc tree |> popLocation loc
-      updated = treeModifyAt (treeFromForest loc) loc tree
+      updated = treeModifyAt (deleteFromForest loc) loc tree
   in
   (deleted,updated)
 
-treeFromForest : Location -> Forest -> Forest
-treeFromForest loc (Forest forest) =
+deleteFromForest : Location -> Forest -> Forest
+deleteFromForest loc (Forest forest) =
   let (id,_) = infoFromLoc loc
       newWorldOrder = LinearOrder.delete id forest.order
       newTrees = Dict.remove id forest.trees
@@ -190,13 +190,13 @@ treeIntoForest tree loc (Forest forest) =
 
 --composed operations
 
-treeMove : Location -> Location -> NodeKind -> DisplayTree -> DisplayTree
+treeMove : Location -> Location -> NodeKind -> DisplayTree -> (Location,DisplayTree)
 treeMove oldPlace newParent kind tree =
   let (deleted,updated) = treeDelete oldPlace tree
       (id,_) = infoFromLoc oldPlace
       newPlace = newParent ++ [(id,kind)]
   in
-  treeInsert deleted newPlace updated
+  (newPlace, treeInsert deleted newPlace updated)
 
 treeReorderAbove : Location -> NodeID -> DisplayTree -> DisplayTree
 treeReorderAbove loc newPlace tree = 
@@ -220,23 +220,86 @@ treeReorderBelow loc newPlace tree =
   in
   treeModifyAt reorder loc tree
 
+--if move to mulitdimensional, then parameterize this and the reordering funs
+--by direction (reorder : ... -> Directino = Nodekind -> ...)
+treeInsertAbove : DisplayTree -> Location -> NodeID -> DisplayTree -> DisplayTree
+treeInsertAbove addTree loc id oldTree = 
+  treeInsert addTree loc oldTree
+  |> treeReorderAbove loc id 
+
+treeInsertBelow : DisplayTree -> Location -> NodeID -> DisplayTree -> DisplayTree
+treeInsertBelow addTree loc id oldTree = 
+  treeInsert addTree loc oldTree
+  |> treeReorderBelow loc id 
+
+treeMoveAbove : Location -> Location -> DisplayTree -> DisplayTree
+treeMoveAbove oldPlace newSibling tree =
+  let (newParent,(id,kind)) = splitLoc newSibling
+      (newPlace,updated) = treeMove oldPlace newParent kind tree
+  in
+  treeReorderAbove newPlace id tree
+
+treeMoveBelow : Location -> Location -> DisplayTree -> DisplayTree
+treeMoveBelow oldPlace newSibling tree =
+  let (newParent,(id,kind)) = splitLoc newSibling
+      (newPlace,updated) = treeMove oldPlace newParent kind tree
+  in
+  treeReorderBelow newPlace id tree
+
+--probably more efficient to use modifyAt, but complexer
 disownChildren : Location -> DisplayTree -> DisplayTree
 disownChildren loc tree =
-  case LinearOrder.heads loc of
-    Nothing     -> Debug.crash "Beard.disownChildren: parent needs a parent"
-    Just parent -> 
-      --TODO get loc, then fold acroos upnodes treemovingabove, then down nodes
-      --below
+  let      
+      disownNode : NodeKind -> NodeID -> DisplayTree -> DisplayTree
+      disownNode kind id tree = 
+        let childLocation = loc ++ [(id,kind)]
+            moveKind = case kind of
+              UpNode   -> treeMoveAbove
+              DownNode -> treeMoveBelow
+              OverNode -> treeMoveAbove --shouldn't actually be used 
+        in
+        moveKind childLocation loc tree
+      --TODO type error, forest and children 
+      children = case .children <| treeGet loc tree of
+                    Forest forest -> forest
+      upOrder   = children.upNodes.order
+      downOrder = children.downNodes.order
+      --NOTE foldl vs foldr
+      upsMoved      = List.foldl (disownNode UpNode)   tree     upOrder 
+      upsDownsMoved = List.foldr (disownNode DownNode) upsMoved downOrder
+  in
+  upsDownsMoved
+
 
 --helper funs
 
+{-
 orderInsert : NodeID -> NodeKind -> Order -> Order 
 orderInsert id kind order =  
   case kind of
     DownNode -> LinearOrder.insertTop id order
     UpNode -> LinearOrder.insertBottom id order
     OverNode -> LinearOrder.insertBottom id order
+-}
+
+--check later if this factorization is helpful
+--prob not, original motive was for disownChildren
+outFromMiddle : NodeKind -> (Order -> v) -> Order -> v
+outFromMiddle kind f order =
+  case kind of
+    DownNode -> List.reverse order |> f 
+    UpNode -> f order
+    OverNode -> f order
+
+orderOutFromMiddle : NodeKind -> (Order -> Order) -> (Order -> Order)
+orderOutFromMiddle kind f order =
+  outFromMiddle kind f order
+  |> outFromMiddle kind identity 
  
+orderInsert : NodeID -> NodeKind -> Order -> Order 
+orderInsert id kind order =  
+  orderOutFromMiddle kind (LinearOrder.insertBottom id) order  
+
 nodeModifyLocation : (Location -> Location) -> NodeData -> NodeData
 nodeModifyLocation update node = 
   { node | location <- update node.location }
@@ -276,11 +339,22 @@ pushLocation : Location -> DisplayTree -> DisplayTree
 pushLocation loc tree =
   treeMap (nodeModifyLocation <| (++) loc) tree
 
+--these are just list funs... 
 infoFromLoc : Location -> (NodeID,NodeKind) 
 infoFromLoc loc =
   case List.head <| List.reverse loc of 
     Nothing -> Debug.crash "Beard.infoFromLoc was passed an empty location"
     Just (id,kind) -> (id,kind)
+
+parentOfLoc : Location -> Location
+parentOfLoc loc =
+  case LinearOrder.heads loc of
+    Nothing     -> Debug.crash "Beard.parentOfLoc: loc has no parent"
+    Just parent -> parent
+
+splitLoc : Location -> (Location,(NodeID,NodeKind))
+splitLoc loc =
+  (parentOfLoc loc, infoFromLoc loc)
 
 idFromData : NodeData -> NodeID
 idFromData nodeData =
