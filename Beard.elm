@@ -246,24 +246,25 @@ treeMoveBelow oldPlace newSibling tree =
   in
   treeReorderBelow newPlace id tree
 
+
 --probably more efficient to use modifyAt, but complexer
 disownChildren : Location -> DisplayTree -> DisplayTree
 disownChildren loc tree =
   let      
       disownNode : NodeKind -> NodeID -> DisplayTree -> DisplayTree
-      disownNode kind id tree = 
+      disownNode kind id tree' = 
         let childLocation = loc ++ [(id,kind)]
             moveKind = case kind of
               UpNode   -> treeMoveAbove
               DownNode -> treeMoveBelow
               OverNode -> treeMoveAbove --shouldn't actually be used 
         in
-        moveKind childLocation loc tree
+        moveKind childLocation loc tree'
+
       --TODO type error, forest and children 
-      children = case .children <| treeGet loc tree of
-                    Forest forest -> forest
-      upOrder   = children.upNodes.order
-      downOrder = children.downNodes.order
+      children  = .children <| treeGet loc tree
+      upOrder   = .order <| forestDrill children.upNodes 
+      downOrder = .order <| forestDrill children.downNodes 
       --NOTE foldl vs foldr
       upsMoved      = List.foldl (disownNode UpNode)   tree     upOrder 
       upsDownsMoved = List.foldr (disownNode DownNode) upsMoved downOrder
@@ -272,6 +273,9 @@ disownChildren loc tree =
 
 
 --helper funs
+
+forestDrill : Forest -> ActualForest
+forestDrill (Forest forest) = forest
 
 {-
 orderInsert : NodeID -> NodeKind -> Order -> Order 
@@ -340,6 +344,7 @@ pushLocation loc tree =
   treeMap (nodeModifyLocation <| (++) loc) tree
 
 --these are just list funs... 
+
 infoFromLoc : Location -> (NodeID,NodeKind) 
 infoFromLoc loc =
   case List.head <| List.reverse loc of 
