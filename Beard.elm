@@ -246,8 +246,8 @@ treeMoveBelow oldPlace newSibling tree =
   in
   treeReorderBelow newPlace id tree
 
-
 --probably more efficient to use modifyAt, but complexer
+--need to return list of new children locations?
 disownChildren : Location -> DisplayTree -> DisplayTree
 disownChildren loc tree =
   let      
@@ -260,8 +260,6 @@ disownChildren loc tree =
               OverNode -> treeMoveAbove --shouldn't actually be used 
         in
         moveKind childLocation loc tree'
-
-      --TODO type error, forest and children 
       children  = .children <| treeGet loc tree
       upOrder   = .order <| forestDrill children.upNodes 
       downOrder = .order <| forestDrill children.downNodes 
@@ -270,6 +268,18 @@ disownChildren loc tree =
       upsDownsMoved = List.foldr (disownNode DownNode) upsMoved downOrder
   in
   upsDownsMoved
+
+treeDeleteSingle : Location -> DisplayTree -> (DisplayTree,DisplayTree)
+treeDeleteSingle loc tree =
+  disownChildren loc tree 
+  |> treeDelete loc
+
+--not actually sure if this and other possible things like
+--treeSingleMoveAbove are useful
+treeMoveSingle : Location -> Location -> NodeKind -> DisplayTree -> (Location,DisplayTree)
+treeMoveSingle oldPlace newParent kind tree =
+  disownChildren oldPlace tree 
+  |> treeMove oldPlace newParent kind 
 
 
 --helper funs
