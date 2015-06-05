@@ -102,6 +102,7 @@ toHtml =
                       Just dbID ->
                         Debug.log "eyo!" <|
                         Html.span
+                        -- Example of pushing interaction event to mailbox
                         ([ onClick dbLinkClicksBox.address (Just (dbID, path))
                         , style
                           [ ("color", "blue")
